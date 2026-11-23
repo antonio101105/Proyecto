@@ -1,0 +1,427 @@
+<!-- RpPageHeader RpUrl=/html/login_box.html RpAccess=Realm2 RpAccess=Realm3 RpObjectType=Static --><!DOCTYPE html>
+<html>
+<head>
+<title>Login</title>
+<meta http-equiv=Content-Type content="text/html; charset=utf-8"/>
+<meta name=copyright content=" © Copyright 2006-2022 Hewlett Packard Enterprise Development LP"/>
+</head>
+<body id=loginBoxContent style=display:none>
+<script type=text/javascript>function checkCachedValues() {
+  $(parent.document).ready(function() {
+    "" == $("#fwver").text() && iLOGlobal.cache.version && jQuery.isValidString(iLOGlobal.cache.version) && ($("#fwver").text(iLOGlobal.cache.version).show(), 
+    $("#fwver_span").show()), "" == $("#cn").text() && iLOGlobal.cache.cn && jQuery.isValidString(iLOGlobal.cache.cn) && $("#cn").text(iLOGlobal.cache.cn);
+  });
+}
+
+function updatePage() {
+  certPromp = !0;
+  var msg = "";
+  jQuery.isPlainObject(iLOGlobal.logout_message) && (msg = "<span rel=\"localize[login.logout]\">" + iLO.translateString("login.logout", "<strong>Logged Out: </strong>") + "</span><span rel=\"localize[" + iLOGlobal.logout_message.langKey + "]\">" + iLO.translateString(iLOGlobal.logout_message.langKey, iLOGlobal.logout_message.text) + "</span><br />"), 
+  jQuery.isNonZeroInteger(iLOGlobal.login_delay) && (msg += iLOGlobal.login_delay < 60 ? "<span rel=\"localize[login.plsWait]\">" + iLO.translateString("login.plsWait", "Please wait ") + "</span>" + iLOGlobal.login_delay + "<span rel=\"localize[login.seconds]\">" + iLO.translateString("login.seconds", " seconds") + ".\n</span>" : "<span rel=\"localize[login.severalMins]\">" + iLO.translateString("login.severalMins", "This operation may take several minutes") + ".\n</span>", 
+  me.toggleEnabled(!1));
+  var time_delay = jQuery.existsNonNull(iLOGlobal.login_delay) ? 1e3 * iLOGlobal.login_delay : 0;
+  $(document).ready(function() {
+    if ($("#ID_LOGOUT_REASON").is(":hidden") && ("" != msg ? $('#ID_LOGOUT_REASON').displayInformative({
+      message: msg
+    }).doTimeout(time_delay, function() {
+      time_delay > 0 && doClearAll(), preSignIn();
+    }) : preSignIn()), iLOGlobal.langs && Array.isArray(iLOGlobal.langs) && iLOGlobal.langs.length > 1) {
+      var lang = iLO.getLanguage();
+      lang && $("#lang_options option[value=\"" + lang + "\"]").prop("selected", "true");
+    }
+    me.checkCachedValues(), iLO.translatePage();
+  });
+}
+
+function refreshPage() {
+  iLO.setCookie("sessionKey", null), iLO.setCookie("altModeProb", null), iLOGlobal.cache.session_key = null;
+  try {
+    iLOGlobal.topPage.location.href = encodeURI(iLOGlobal.topPage.location.href).replace(/\?.*/, "") + "?=" + me.rnd();
+  } catch (e) {
+    location.replace(encodeURI(location.href));
+  }
+}
+
+function changeLanguage() {
+  var lang = $("#lang_options option:selected").val();
+  iLO.setLanguage(lang), iLO.translatePage();
+}
+
+function preSignIn() {
+  certPromp && (me.toggleEnabled(!1), t_out = setTimeout(function() {
+    $('#ID_LOGIN_FAILED_CUSTOM').text("").displayError({
+      langKey: "login.netChanged",
+      text: "Connection with iLO cannot be established. If you recently made changes to the network configurations, you may need to refresh this page to re-negotiate an SSL connection."
+    });
+  }, 1e4), certPromp = !1, iLO.sendJsonRequest("login_session", "GET", "/json/login_session", null, function(o, fname, error) {
+    $(document).ready(function() {
+      preSignInCallback(o, fname, error);
+    });
+  }));
+}
+
+function rnd() {
+  return String(new Date().getTime()).replace(/\D/gi, '');
+}
+
+function preSignInCallback(o, fname, error) {
+  clearTimeout(t_out);
+  var msg = iLO.checkError(o, fname, error);
+  if (msg || jQuery.isPlainObject(o) && null == o.secjmp) return certPromp = !0, refresh = !0, 
+  iLO.setCookie("sessionKey", null), iLOGlobal.cache.session_key = null, retryCount >= 10 && ($('#ID_LOGIN_FAILED_CUSTOM').displayError({
+    langKey: "login.brwsrUnableCommiLo",
+    text: "The browser is unable to communicate with iLO."
+  }), iLOGlobal.features.alt_mode_en && $('#ID_LOGIN_FAILED_CUSTOM .statusDisplay img').hide()), 
+  retryCount >= 20 && iLOGlobal.features.alt_mode_en && $('#ID_LOGIN_FAILED_CUSTOM').addError({
+    langKey: "login.brwsrUnableCommiLoRes",
+    text: "Try clearing your browser cache and refreshing this page."
+  }), jQuery.log('Re-Making preSignIn call from line 104. Re-try count: ' + retryCount), 
+  setTimeout("preSignIn();", 2e3), retryCount++, !0;
+  if (refresh) return refreshPage(), !0;
+  me.toggleEnabled(!0, !0);
+  var alt_sec_msg = iLOGlobal.features.alt_mode_en && (iLOGlobal.features.alt_level == iLOGlobal.constants.alt_level.Heavy || "H3C" == iLOGlobal.features.alt_vnd), $securityMessage = alt_sec_msg ? $("#footerSecurityMessage") : $("#securityMessage"), loginSecurityBanner = alt_sec_msg ? "#footerLoginSecurityBannerHeader" : "#loginSecurityBanner";
+  if (o.security_message_enabled && jQuery.isValidString(o.security_message)) {
+    var IEVersion = iLO.getIEVersion();
+    if ($securityMessage.text(""), IEVersion > 0 && 7 >= IEVersion) {
+      for (var secmsg = o.security_message.replace(/(\n\r|\r\n|\n)/g, "<br />").split("<br />"), i = 0; i < secmsg.length; i++) $securityMessage.append($('<span></span>').text(secmsg[i])).append("<br />");
+      $securityMessage.parents(loginSecurityBanner).show();
+    } else $securityMessage.text(o.security_message).parents(loginSecurityBanner).show();
+    alt_sec_msg && ($('#footerLoginSecurityBannerHeader').show(), $('#login-footer').show());
+  } else $securityMessage.text(""), $(loginSecurityBanner).hide();
+  jQuery.isValidString(o.default_lang) && (iLOGlobal.default_language = o.default_lang), 
+  jQuery.isValidString(o.accept_lang) && parseLanguage(o.accept_lang);
+  var ver_text = o.version;
+  if (jQuery.isValidString(o.ilo_fw_pass) && (ver_text += "  " + o.ilo_fw_pass), $("#fwver").text(ver_text), 
+  $("#fwver_span").show(), o.cn && ($("#cn").html('<a title="Host Common Name (CN)" target="_new" href="https://' + o.cn + '"/ >' + o.cn + '</a>'), 
+  o.sys_stat && o.sys_stat.system_health && "OP_STATUS_OK" != o.sys_stat.system_health && $('#cnStatus').html(iLO.getStatusHtml(o.sys_stat.system_health, {
+    label: !1
+  })), o.sys_stat && o.sys_stat.self_test && "OP_STATUS_OK" != o.sys_stat.self_test && $(document).ready(function() {
+    $('#iLOStatus').html(iLO.getStatusHtml(o.sys_stat.self_test, {
+      label: !1
+    })), $('#ID_ILO_HEALTH').displayWarning("<p class=\"paragraph paragraph--margin-none\"><span data-localize=\"login.iLOHealthDegraded1\">iLO Self-Test reports a problem with</span>: <span id=\"iLOHealthComponentsLabel\" style=\"font-weight:bold\">" + o.sys_stat.self_test_faults + "</span>. <span data-localize=\"login.iLOHealthDegraded2\">View details on Diagnostics page.</span></p>");
+  }), jQuery.existsNonNull(iLOGlobal.topPage))) {
+    var title = iLOGlobal.topPage.jQuery(iLOGlobal.topPage.document).attr("title").replace(/:.*/, "") + ": " + (o.server_name ? o.server_name + " - " : "") + o.cn;
+    if (o.blade) {
+      if (jQuery.isValidString(o.bay_num)) {
+        var matches = o.bay_num.match(/\d+$/);
+        matches && (iLOGlobal.bay_num = matches[0]);
+      }
+      title += "" + (o.bay_num ? " - " + o.bay_num : "") + (o.enc_name ? " - " + o.enc_name : "") + (o.rack_name ? " - " + o.rack_name : "");
+    }
+    try {
+      iLOGlobal.topPage.document.title = title;
+    } catch (e) {}
+    iLOGlobal.topPage.jQuery(iLOGlobal.topPage.document).attr("title", title);
+  }
+  if (null == o.secjmp || "undefined" == typeof o.secjmp ? $('#ID_LOGIN_FAILED_CUSTOM').displayError({
+    langKey: "login.brwsrUnableCommiLo",
+    text: "The browser is unable to communicate with iLO.",
+    message: ".."
+  }) : o.secjmp && $('#ID_SECJMP').displayError({
+    langKey: "login.secSwOn",
+    text: "<strong>Alert! </strong>iLO security override switch is set. Security enforcement is disabled."
+  }), me.dir_allowed = o.license_directory_auth && (0 != o.ldap_enabled || o.kerberos_enabled), 
+  me.dir_allowed && o.kerberos_enabled ? $('#ID_SPNEGO_FRAME').show() : $('#ID_SPNEGO_FRAME').hide(), 
+  o.local_enabled && me.dir_allowed ? $('#usernameBox').html('Directory&nbsp;or&nbsp;local&nbsp;user&nbsp;name:').attr("rel", "localize[login.DirectoryOrUserName]") : !o.local_enabled && me.dir_allowed ? $('#usernameBox').html('Directory&nbsp;user&nbsp;name:').attr("rel", "localize[login.DirectoryUserName]") : $('#usernameBox').html('Local&nbsp;user&nbsp;name:').attr("rel", "localize[login.LocalUserName]"), 
+  o.login_delay ? (me.toggleEnabled(!1), $('#ID_LOGIN_DELAY').displayInformative({
+    langKey: "login.loginDelay",
+    text: "Login Delayed for ",
+    message: o.login_delay + '<span rel="localize[login.seconds]">' + iLO.translateString("login.seconds", " seconds") + '</span>.\n'
+  }).doTimeout(1e3 * o.login_delay, function() {
+    me.toggleEnabled(!0, !0), $('#ID_LOGIN_DELAY').empty().hideMessage();
+  })) : me.toggleEnabled(!0, !0), iLO.setSupportedLanguages(o.langs), Array.isArray(o.langs)) {
+    if (o.langs.length > 1) {
+      $("#lang_row").show();
+      var lang = iLO.getLanguage();
+      $lang_options = $("#lang_options"), $lang_options.html($("#lang_option_template").jqote(o.langs)), 
+      iLOGlobal.features.alt_mode_en && iLOGlobal.features.alt_mode_err ? iLO.setLanguage("en") : iLO.isSupportedLanguage(lang) || (lang = iLO.isSupportedLanguage(o.default_language) ? o.default_language : "en", 
+      iLO.setLanguage(lang)), $("#lang_options option[value=\"" + lang + "\"]").prop("selected", "true");
+    } else iLO.setLanguage("en"), $("#lang_row").hide();
+    iLO.translatePage();
+  }
+  if (msg || null == o.secjmp) {
+    var sURL = unescape(window.location.pathname);
+    return setTimeout("window.location.href = \"" + sURL + "\"", 2e4), $("#loginBoxContent").show(), 
+    !1;
+  }
+  if (jQuery.existsNonNull(o.ipmanager) && (jQuery.existsNonNull(o.ipmanager.managerProductName) || jQuery.existsNonNull(o.ipmanager.ManagerProductName))) {
+    var ipm = o.ipmanager, badBlob = !1;
+    jQuery.existsNonNull(ipm) && (jQuery.existsNonNull(ipm.managerProductName) || jQuery.existsNonNull(ipm.ManagerProductName) ? jQuery.existsNonNull(ipm.managerProductName) && (ipm.ManagerProductName = ipm.managerProductName, 
+    "undefined" != typeof ipm.managerUrl && "undefined" == typeof ipm.ManagerUrl && ("undefined" == typeof ipm.managerUrl.xref ? ipm.ManagerUrl = {
+      xref: ipm.managerUrl
+    } : ipm.ManagerUrl = ipm.managerUrl), badBlob = !0) : (ipm.ManagerProductName = "Unknown Manager", 
+    badBlob = !0)), ipm.ManagerUrl.xref = jQuery('<div></div>').text(ipm.ManagerUrl.xref).html(), 
+    ipm.ManagerProductName = jQuery('<div></div>').text(ipm.ManagerProductName).html(), 
+    iLOGlobal.ipmanager = ipm, msg = "<span rel=\"localize[status_labels.WARNING]\" class=\"ui-priority-primary\">Warning</span><strong>:&nbsp;</strong><span rel=\"localize[ipmanager.ipmanager_managed]\">" + iLO.translateString("ipmanager.ipmanager_managed", "This system is being managed by:") + "</span>&nbsp;<a title=\"" + ipm.ManagerUrl.xref + '" target="_new" href="' + ipm.ManagerUrl.xref + '"/ >' + ipm.ManagerProductName + "</a>.<br/><br/>", 
+    badBlob ? (msg += "<span rel=\"localize[ipmanager.badBlob]\">" + iLO.translateString("ipmanager.badBlob", "Remote Manager resource found but is in an unexpected format.  This iLO may not be properly configured to be managed by a content management System.") + "\n</span>", 
+    $("#ID_IPMANAGER").displayError(msg)) : (msg += "<span rel=\"localize[ipmanager.ipmanager_managed2]\">" + iLO.translateString("ipmanager.ipmanager_managed2", "Changes made locally in iLO will be out of sync with the centralized settings and could affect the behavior of the remote management system.") + "\n</span>", 
+    $("#ID_IPMANAGER").displayWarning(msg));
+  } else $("#ID_IPMANAGER").hide();
+  if (o.version) {
+    me.ver = o.version, o.ilo_fw_pass && jQuery.isValidString(o.ilo_fw_pass) && (me.ver = me.ver + " " + o.ilo_fw_pass);
+    var prev_ver = iLOGlobal.cache.version;
+    if (jQuery.isValidString(prev_ver) && me.ver != prev_ver) return iLOGlobal.cache = {}, 
+    iLO.setCookie("sessionKey", null), alert(iLO.translateString("login.fwverUpdateAlrt", "The iLO firmware version has been changed.  Please clear the browser cache before continuing.")), 
+    setTimeout(function() {
+      try {
+        iLOGlobal.topPage.location.href = encodeURI(iLOGlobal.topPage.location.href).replace(/\?.*/, "") + "?=" + me.rnd();
+      } catch (e) {
+        location.reload(!0);
+      }
+    }, 20), $("#loginBoxContent").show(), !1;
+  }
+  return "t_class" == o.blade_type ? $("#hpBrand").attr("rel", "localize[appName.hpSynergy]").html(iLO.translateString("appName.hpSynergy", "HPE Synergy")) : $("#hpBrand").attr("rel", "localize[appName.hpBrand]").html(iLO.translateString("appName.hpBrand", "HPE ProLiant")), 
+  $(document).ready(function() {
+    iLOGlobal.features.alt_mode_err ? $('#lang_row').hide() : iLO.translatePage();
+  }), $("#loginBoxContent").show(), !1;
+}
+
+function parseLanguage(languages) {
+  for (var res = languages.split(/,|;/), arrLang = new Array(), i = 0; i < res.length; i++) {
+    var result = res[i].split(/-/)[0];
+    checkDuplicateLang(arrLang, result) || (arrLang.length += 1, arrLang[arrLang.length - 1] = result);
+  }
+  iLOGlobal.accept_language = arrLang;
+}
+
+function checkDuplicateLang(arrLang, result) {
+  for (var j = 0; j < arrLang.length; j++) if (arrLang[j] == result || -1 != result.indexOf("=")) return !0;
+  return !1;
+}
+
+function toggleEnabled(bEnabled, bKeepLoginFailed) {
+  $("#ID_LOGON").toggleEnabled(bEnabled), $("#ID_SPNEGO").toggleEnabled(bEnabled), 
+  $("#usernameInput").toggleEnabled(bEnabled), $("#passwordInput").toggleEnabled(bEnabled), 
+  bEnabled && ($("#ID_LOGIN_DELAY").hideMessage().html(""), $("#usernameInput").trigger("focus"), 
+  bKeepLoginFailed || $("#ID_LOGIN_FAILED_CUSTOM").hideMessage().html(""));
+}
+
+function checkEnter(e) {
+  var characterCode;
+  try {
+    return characterCode = e && e.which ? e.which : e.keyCode, 13 == characterCode ? (signIn(), 
+    !1) : !0;
+  } catch (err) {
+    return !0;
+  }
+}
+
+function signIn() {
+  certPromp = !0, $('#ID_LOGIN_FAILED_CUSTOM').hideMessage(), $('#ID_LOGOUT_REASON').hideMessage(), 
+  me.toggleEnabled(!1), iLO.clearSessionKey();
+  var jsonObj = {
+    method: "login",
+    user_login: $("#usernameInput").val(),
+    password: $("#passwordInput").val()
+  }, timeout = 12e4;
+  return me.dir_allowed && (timeout = 12e5), iLO.sendJsonRequest("login", "POST", "json/login_session", jsonObj, me.signInCallback, null, timeout), 
+  !1;
+}
+
+function signInCallback(o, fname, error) {
+  var msg = iLO.checkError(o, fname, error);
+  if (msg) if (jQuery.isPlainObject(o)) {
+    if (error == iLOGlobal.constants.HttpErrors.Forbidden) 'JS_ERR_NO_PRIV' == o.message ? ($('#ID_LOGIN_FAILED_CUSTOM').displayError({
+      langKey: "login.failLogin1",
+      text: "Failed login attempt, Unauthorized."
+    }), me.toggleEnabled(!1), setTimeout("preSignIn();", 1e3)) : 'JS_ERR_FAILURE' == o.message && ($('#ID_LOGIN_FAILED_CUSTOM').addError({
+      langKey: "login.failLogin3a",
+      text: "Account Login Unavailable\n"
+    }), $('#ID_LOGIN_FAILED_CUSTOM').addError({
+      langKey: "login.failLogin3b",
+      text: "Due to the number of users currently logged in, access to the iLO processor is unavailable at this time.\n"
+    }), $('#ID_LOGIN_FAILED_CUSTOM').addError({
+      langKey: "login.failLogin3c",
+      text: "Please try again later. "
+    })); else if (error == iLOGlobal.constants.HttpErrors.InternalError) if ('JS_ERR_FAILURE' == o.message) $('#ID_LOGIN_FAILED_CUSTOM').displayError({
+      langKey: "login.failLogin2",
+      text: "Failed login attempt, Login Delay required."
+    }), me.toggleEnabled(!1), setTimeout("preSignIn();", 1e3); else {
+      jQuery.existsNonNull(o.details) ? o.details : "";
+      $('#ID_LOGIN_FAILED_CUSTOM').displayError({
+        langKey: "login.failLoginErr",
+        text: "Login Error: ",
+        message: "error=" + error + ", message=" + o.message + ", details=" + o.details
+      });
+    }
+  } else $('#ID_LOGIN_FAILED_CUSTOM').displayError({
+    langKey: "login.failLoginErr",
+    text: "Login Error: ",
+    message: msg
+  }); else {
+    var sessionKey = o.session_key;
+    if (sessionKey) {
+      if (jQuery.cookies.set('sessionKey', sessionKey, {
+        secure: !0,
+        path: "/;SameSite=Strict"
+      }), iLOGlobal.cache = {}, iLOGlobal.cache.session_key = sessionKey, iLOGlobal.cache.login_session = o, 
+      iLOGlobal.cache.version = me.ver, iLOGlobal.cache.cn = o.cn && jQuery.isValidString(o.cn) ? o.cn : "", 
+      me.doClearAll(), me.toggleEnabled(!1), iLOGlobal.features.alt_mode_err ? iLO.setCookie("altModeProb", iLOGlobal.features.alt_mode.toString()) : iLO.setCookie("altModeProb", null), 
+      iLOGlobal.features.alt_mode === iLOGlobal.constants.alt_mode.ProfileError) try {
+        iLOGlobal.topPage.showFWUpdate();
+      } catch (e) {} else if (iLOGlobal.isApplication) try {
+        iLOGlobal.topPage.showApplication();
+      } catch (e) {}
+      "function" == typeof $('#login_dialog').dialog && $('#login_dialog').dialog("close");
+    }
+  }
+}
+
+function failLogin(errorMsg) {
+  me.toggleEnabled(!0), $("passwordInput").trigger("focus"), $("passwordInput").val('');
+}
+
+function doClearAll() {
+  try {
+    $("#passwordInput").val(""), $("#usernameInput").val("").trigger("focus"), $("#messageSection div").hideMessage().html("");
+  } catch (e) {}
+}
+
+function spnegoCallback(data, textStatus, xhr) {
+  if (iLOGlobal.isApplication) try {
+    iLOGlobal.topPage.showApplication();
+  } catch (e) {
+    top.showApplication();
+  }
+  $('#login_dialog').dialog("close");
+}
+
+function spnegoError(xhr, textStatus, error) {
+  me.toggleEnabled(!0), $("#ID_SPNEGO").toggleEnabled(!1);
+  var msg = iLO.translateString("login.zeroSignIn", "Zero Sign In") + iLO.translateString("login.authFailed", ": Login Authorization failed<br />");
+  $('#ID_LOGIN_FAILED_CUSTOM').displayError({
+    langKey: "",
+    text: msg
+  });
+}
+
+function signInSpnego() {
+  return $('#ID_LOGIN_FAILED_CUSTOM').hideMessage(), me.toggleEnabled(!1), $.ajax({
+    cache: !1,
+    url: "login_spnego.html",
+    dataType: 'html',
+    success: spnegoCallback,
+    error: spnegoError,
+    global: !1,
+    timeout: 6e4,
+    type: "GET"
+  }), !1;
+}
+
+function languageChangeHandler() {
+  var lang = iLO.getLanguage();
+  $("#lang_options option").prop("selected", "false"), $("#lang_options option[value=" + lang + "]").prop("selected", "true"), 
+  iLO.translatePage();
+}
+
+function unloadfunc() {
+  certPromp = !0;
+}
+
+var refresh = !1, retryCount = 0, me = this, ver, t_out, certPromp = !0, dir_allowed = !1;
+
+if ("undefined" == typeof isConnected) var isConnected = iLO.init({});
+
+try {
+  navigator.userAgent.indexOf("Edge") >= 0 && iLO.favIcon(null);
+} catch (e) {}
+
+iLOGlobal.login_delay ? (me.updatePage(), setTimeout(function() {
+  me.preSignIn(), iLOGlobal.logout_message = null, iLOGlobal.login_delay = 0;
+}, 1e3 * iLOGlobal.login_delay)) : (me.preSignIn(), iLOGlobal.logout_message = null), 
+window.onbeforeunload = function() {
+  return me.unloadfunc();
+}, $(document).on("unload", function() {
+  me.unloadfunc(), $(document).off('unload');
+}), $.subscribe("/language/change", me.languageChangeHandler);</script><div id=login_fields_table_div>
+<form id=login-form class="row form login-form login-form--align-start form--pad-none" style=padding:0 autocomplete=off>
+<table id=login_fields_table border=0 cellspacing=0 cellpadding=0>
+<tr id=login_box_msgs>
+<td colspan=2>
+<div id=ID_SECJMP style=display:none;margin-bottom:10px></div>
+<div id=ID_IPMANAGER style=display:none;margin-bottom:10px></div>
+<div id=ID_ILO_HEALTH style=display:none;margin-bottom:10px></div>
+</td>
+</tr>
+<tr>
+<td class=login_fields_label>
+<span id=usernameBox rel=localize[login.loginName]>Login Name:</span>
+</td>
+<td class=login_fields>
+<input autocomplete=off class=textfield type=text name=usernameInput id=usernameInput size=26 onkeypress="
+  return checkEnter(event);
+"/>
+</td>
+</tr>
+<tr>
+<td class=login_fields_label>
+<span id=passwordBox rel=localize[login.password]>Password:</span>
+</td>
+<td class=login_fields>
+<input autocomplete=off class=textfield type=password name=passwordInput id=passwordInput size=26 onkeypress="
+  return checkEnter(event);
+"/>
+</td>
+</tr>
+<tr id=lang_row style=display:none>
+<td class=login_fields_label>
+<span id=languageBox rel=localize[navigation.lang]>Language:</span>
+</td>
+<td class=login_fields>
+<select name=lang_options id=lang_options onchange="
+  return changeLanguage(), !1;
+">
+<option value=en>English</option>
+</select>
+</td>
+</tr>
+<tr id=remember_section style=display:none>
+<td id=td_remember_section>
+<br/>
+<span class=remember_cb>
+<input type=checkbox id=remember_checkbox name=remember_checkbox value="checkboxValue"/>
+</span>
+</td>
+<td>
+<br/>
+<span id=rememberBox rel=localize[login.remember] style=white-space:nowrap>
+Remember my login information on this browser.&nbsp;&nbsp;<br/>
+</span>
+</td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td>
+<br/>
+<button class="login-form__submit primary call-to-action" id=ID_LOGON name=ID_LOGON type=button onclick="
+  return signIn(), !1;
+" rel=localize[login.loginButton]>Log In</button>
+</td>
+</tr>
+<tr>
+<td></td>
+<td id=ID_SPNEGO_FRAME style=display:none>
+<button class="login-form__submit primary call-to-action" tabindex=5 id=ID_SPNEGO name=ID_SPNEGO onclick="
+  return signInSpnego(), !1;
+" rel=localize[login.zeroSignIn]>
+Zero Sign In
+</button>
+</td>
+</tr>
+<tr>
+<td colspan=2 id=messageSection>
+
+<div id=ID_LOGIN_FAILED_CUSTOM style=display:none></div>
+<div id=ID_LOGIN_DELAY style=display:none></div>
+<div id=VALIDATION_ERROR style=display:none></div>
+<div id=ID_LOGOUT_REASON style=display:none></div>
+</td>
+</tr>
+</table>
+</form>
+</div>
+<script type=text/x-jqote-template id=lang_option_template>/*!<![CDATA[
+    <option value="<%= this.lang %>"><%= this.trans_name %></option>
+    ]]>!*/</script>
+</body>
+</html>
