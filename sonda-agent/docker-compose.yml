@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # Honeypot HP iLO 4 Vulnerable
+  ilo4-vulnerable:
+    build: ./honeypots/ilo4-vulnerable
+    container_name: phantom-ilo4
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "22:22"
+    environment:
+      - SONDA_ID=${SONDA_ID:-sonda-1}
+      - API_CENTRAL_URL=${API_CENTRAL_URL:-http://100.64.0.1:8000}
+      - DB=/data/honeypot.db
+    volumes:
+      - ilo4-data:/data
+    restart: unless-stopped
+
+  # OpenCanary - Servicios señuelo
+  opencanary:
+    image: docker.io/cym13/opencanary:latest
+    container_name: phantom-opencanary
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./honeypots/opencanary/opencanary.conf:/etc/opencanaryd/opencanary.conf:ro
+      - opencanary-data:/var/tmp/opencanary
+    environment:
+      - SONDA_ID=${SONDA_ID:-sonda-1}
+      - API_CENTRAL_URL=${API_CENTRAL_URL:-http://100.64.0.1:8000}
+    cap_add:
+      - NET_BIND_SERVICE
+    restart: unless-stopped
+
+  # Sniffer de tráfico de red (ventanas de 10s)
+  sniffer:
+    build: ./sniffer
+    container_name: phantom-sniffer
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - SONDA_ID=${SONDA_ID:-sonda-1}
+      - API_CENTRAL_URL=${API_CENTRAL_URL:-http://100.64.0.1:8000}
+      - INTERFACE=eth0
+      - WINDOW_SECONDS=10
+    restart: unless-stopped
+
+  # Firewall redirect (aplica reglas iptables cuando confianza >= 0.80)
+  firewall-redirect:
+    build: ./sniffer
+    container_name: phantom-firewall
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - SONDA_ID=${SONDA_ID:-sonda-1}
+      - API_CENTRAL_URL=${API_CENTRAL_URL:-http://100.64.0.1:8000}
+    command: python firewall_redirect.py
+    restart: unless-stopped
+
+volumes:
+  ilo4-data:
+    name: phantom-ilo4-data
+  opencanary-data:
+    name: phantom-opencanary-data

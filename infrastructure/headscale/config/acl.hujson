@@ -1,0 +1,39 @@
+{
+  "groups": {
+    "group:sondas": ["tag:sonda"],
+    "group:central": ["tag:central"],
+    "group:replica": ["tag:replica"]
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["group:sondas"],
+      "dst": ["group:central:8000,5432"]
+    },
+    {
+      "action": "accept",
+      "src": ["group:central"],
+      "dst": ["group:replica:5432"]
+    },
+    {
+      "action": "deny",
+      "src": ["group:sondas"],
+      "dst": ["group:sondas"]
+    },
+    {
+      "action": "deny",
+      "src": ["*"],
+      "dst": ["*"]
+    }
+  ],
+  "tagOwners": {
+    "tag:sonda": ["autogroup:member"],
+    "tag:central": ["autogroup:member"],
+    "tag:replica": ["autogroup:member"]
+  },
+  "ssh": [],
+  "autoApprovers": {
+    "exitNode": ["group:central"],
+    "route": ["group:central"]
+  }
+}

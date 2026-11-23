@@ -1,0 +1,32 @@
+# Secrets
+.env
+*.key
+*.pem
+*.pfx
+
+# Volúmenes y datos
+data/
+postgres-data/
+ts-state/
+logs/
+*.log
+
+# Capturas y datasets pesados
+*.pcap
+*.pcapng
+*.csv
+datasets/*
+!datasets/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Modelos ML (se generan en ml-pipeline/scripts/entrenar.py)
+ml-pipeline/models/*.joblib
+!ml-pipeline/models/.gitkeep

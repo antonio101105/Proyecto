@@ -1,0 +1,75 @@
+# OpenCanary Configuration Example for PHANTOM
+# Copia a /etc/opencanaryd/opencanary.conf y ajusta según necesidades
+
+[openCanary]
+version = 0.9.0
+uid = opencanary
+gid = opencanary
+device.node_id = "sonda-1"
+logger_class = PyLogger
+logger_kwargs = {"formatters": {"plain": {"format": "%(message)s"}}, "handlers": {"console": {"class": "logging.StreamHandler", "stream": "ext://sys.stdout", "formatter": "plain"}}, "root": {"level": "INFO", "handlers": ["console"]}}
+logfile = /var/log/opencanary.log
+loglevel = INFO
+
+# Puertos habilitados (cambiar enabled = true/false)
+[ftp]
+enabled = true
+port = 21
+banner = "FTP server ready"
+logfile = /var/log/ftp.log
+
+[ssh]
+enabled = true
+port = 22
+banner = "SSH-2.0-OpenSSH_7.9p1 Debian-10"
+logfile = /var/log/ssh.log
+
+[telnet]
+enabled = true
+port = 23
+banner = "Login: "
+logfile = /var/log/telnet.log
+
+[smb]
+enabled = true
+port = 445
+logfile = /var/log/smb.log
+
+[http]
+enabled = true
+port = 8080
+logfile = /var/log/http.log
+
+[https]
+enabled = true
+port = 8443
+logfile = /var/log/https.log
+
+[mysql]
+enabled = false
+port = 3306
+
+[mssql]
+enabled = false
+port = 1433
+
+[rdp]
+enabled = true
+port = 3389
+logfile = /var/log/rdp.log
+
+[vnc]
+enabled = true
+port = 5900
+logfile = /var/log/vnc.log
+
+# Configuración de notificaciones (opcional - se usa reporter.py para API central)
+# [emailer]
+# enabled = false
+# smtp_host = smtp.gmail.com
+# smtp_port = 587
+# smtp_user = 
+# smtp_pass = 
+# from_addr = 
+# to_addr = 
+# subject = "OpenCanary Alert - {device.node_id}"

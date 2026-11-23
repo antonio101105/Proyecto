@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  # Cliente Tailscale - comparte red con postgres-master y phantom-api
+  ts-phantom:
+    image: tailscale/tailscale:latest
+    container_name: phantom-ts
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    volumes:
+      - ts-state:/var/lib/tailscale
+    environment:
+      - TS_AUTHKEY=${HEADSCALE_AUTHKEY}
+      - TS_EXTRA_ARGS=--advertise-routes=100.64.0.0/10 --accept-routes=false
+      - TS_STATE_DIR=/var/lib/tailscale
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
+
+  # PostgreSQL 16 Maestro - comparte red con ts-phantom
+  postgres-master:
+    image: postgres:16
+    container_name: phantom-postgres-master
+    restart: unless-stopped
+    network_mode: "service:ts-phantom"
+    environment:
+      - POSTGRES_DB=phantom
+      - POSTGRES_USER=phantom
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_REPLICATION_USER=replicator
+      - POSTGRES_REPLICATION_PASSWORD=${REPLICA_PASSWORD}
+    volumes:
+      - postgres-master-data:/var/lib/postgresql/data
+      - ./postgres-init/01-init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    command: >
+      postgres
+      -c wal_level=replica
+      -c max_wal_senders=10
+      -c max_replication_slots=10
+      -c hot_standby=on
+      -c synchronous_commit=local
+      -c listen_addresses=*
+      -c shared_preload_libraries=pg_stat_statements
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U phantom -d phantom"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend - comparte red con ts-phantom
+  phantom-api:
+    build: ../../backend-api
+    container_name: phantom-api
+    restart: unless-stopped
+    network_mode: "service:ts-phantom"
+    environment:
+      - DATABASE_URL=postgresql://phantom:${POSTGRES_PASSWORD}@localhost:5432/phantom
+      - MODEL_PATH=/app/models/modelo_phantom.joblib
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ../../backend-api/models:/app/models:ro
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  ts-state:
+    name: phantom-ts-state
+  postgres-master-data:
+    name: phantom-postgres-master-data

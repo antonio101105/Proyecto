@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  ts-replica:
+    image: tailscale/tailscale:latest
+    container_name: phantom-ts-replica
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    volumes:
+      - ts-replica-state:/var/lib/tailscale
+    environment:
+      - TS_AUTHKEY=${HEADSCALE_AUTHKEY_REPLICA}
+      - TS_EXTRA_ARGS=--accept-routes=false
+    sysctls:
+      - net.ipv4.ip_forward=1
+
+  postgres-replica:
+    image: postgres:16
+    container_name: phantom-postgres-replica
+    restart: unless-stopped
+    network_mode: "service:ts-replica"
+    environment:
+      - POSTGRES_DB=phantom
+      - POSTGRES_USER=phantom
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-replica-data:/var/lib/postgresql/data
+    command: >
+      postgres
+      -c hot_standby=on
+      -c hot_standby_feedback=on
+      -c max_standby_streaming_delay=30s
+      -c wal_receiver_status_interval=10s
+      -c listen_addresses=*
+      -c primary_conninfo=host=oracle-master port=5432 user=replicator password=${REPLICA_PASSWORD} application_name=replica_sslmode=prefer
+      -c restore_command=''
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U phantom -d phantom"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ts-replica-state:
+    name: phantom-ts-replica-state
+  postgres-replica-data:
+    name: phantom-postgres-replica-data
