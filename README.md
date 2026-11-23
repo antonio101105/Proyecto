@@ -36,7 +36,7 @@ PHANTOM es un **honeypot distribuido hub-and-spoke** sobre **Headscale v0.23.0**
 │  │ │ FastAPI       │ │                                          │
 │  │ │ :8000         │ │                                          │
 │  │ └───────────────┘ │                                          │
-│  └──────────-────────┘       ┌────────────────────────-───────┐  │
+│  └──────────-────────┘      ┌────────────────────────-───────┐  │
 │                             │ oracle-replica                 │  │
 │                             │ PostgreSQL 16 Esclavo          │  │
 │                             │ streaming replication          │  │
