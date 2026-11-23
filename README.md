@@ -8,39 +8,39 @@ PHANTOM es un **honeypot distribuido hub-and-spoke** sobre **Headscale v0.23.0**
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  HUB AND SPOKE — ISLAMIENTO TOTAL (Headscale ACLs)             │
+│  HUB AND SPOKE — ISLAMIENTO TOTAL (Headscale ACLs)              │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  Oracle Cloud Madrid (82.70.74.120)                            │
+│  Oracle Cloud Madrid (82.70.74.120)                             │
 │  ┌──────────────────────────────────────────────┐               │
 │  │  Headscale v0.23.0 (Plano de Control)        │               │
 │  │  ├─ Panel admin: 100.71.200.103:8086 (Nginx) │               │
 │  │  └─ ACLs: sonda->sonda DENEGADO              │               │
 │  └──────────────────────────────────────────────┘               │
 │                                                                 │
-│  Tailnet (100.x.x.x — Headscale)                              │
-│  ┌──────────────────┐       ┌───────────────────────────────┐  │
-│  │ oracle-master    │◄──────┤ SONDAS EN EL BORDE            │  │
-│  │ 100.64.0.1       │  ACL  │  sonda-1: 100.64.0.x         │  │
-│  │                   │       │  sonda-2: 100.64.0.x         │  │
+│  Tailnet (100.x.x.x — Headscale)                                │
+│  ┌─────────────────-─┐       ┌───────────────────────────────┐  │
+│  │ oracle-master     │◄──────┤ SONDAS EN EL BORDE            │  │
+│  │ 100.64.0.1        │  ACL  │  sonda-1: 100.64.0.x          │  │
+│  │                   │       │  sonda-2: 100.64.0.x          │  │
 │  │ ┌───────────────┐ │       │                               │  │
-│  │ │ ts-phantom    │ │       │  ┌─────────────────────────┐ │  │
-│  │ │ (Tailscale)   │ │       │  │ OpenCanary              │ │  │
-│  │ └───────────────┘ │       │  │ Honeypot iLO4 vulnerable│ │  │
-│  │ ┌───────────────┐ │       │  │ Sniffer (10s windows)   │ │  │
-│  │ │ PostgreSQL 16 │ │       │  │ reporter.py → API       │ │  │
-│  │ │ Maestro       │ │       │  └─────────────────────────┘ │  │
-│  │ │ wal_level=rep │ │       │  → POST 100.64.0.1:8000     │  │
+│  │ │ ts-phantom    │ │       │  ┌─────────────────────────┐  │  │
+│  │ │ (Tailscale)   │ │       │  │ OpenCanary              │  │  │
+│  │ └───────────────┘ │       │  │ Honeypot iLO4 vulnerable│  │  │
+│  │ ┌───────────────┐ │       │  │ Sniffer (10s windows)   │  │  │
+│  │ │ PostgreSQL 16 │ │       │  │ reporter.py → API       │  │  │
+│  │ │ Maestro       │ │       │  └─────────────────────────┘  │  │
+│  │ │ wal_level=rep │ │       │  → POST 100.64.0.1:8000       │  │
 │  │ └───────────────┘ │       │                               │  │
 │  │ ┌───────────────┐ │       └───────────────────────────────┘  │
-│  │ │ FastAPI       │ │                                         │
-│  │ │ :8000         │ │                                         │
-│  │ └───────────────┘ │                                         │
-│  └──────────────────┘       ┌───────────────────────────────┐  │
+│  │ │ FastAPI       │ │                                          │
+│  │ │ :8000         │ │                                          │
+│  │ └───────────────┘ │                                          │
+│  └──────────────────┘       ┌────────────────────────-───────┐  │
 │                             │ oracle-replica                 │  │
 │                             │ PostgreSQL 16 Esclavo          │  │
 │                             │ streaming replication          │  │
-│                             └─────────────────────────────────┘  │
+│                             └────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
