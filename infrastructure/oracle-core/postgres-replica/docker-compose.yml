@@ -1,6 +1,11 @@
 version: '3.8'
 
+# PHANTOM PostgreSQL Réplica - Streaming Replication
+# Despliegue en servidor separado (o misma VM con IP Tailnet distinta)
+# IP: 100.64.0.2 (tag:replica)
+
 services:
+  # Cliente Tailscale para la réplica
   ts-replica:
     image: tailscale/tailscale:latest
     container_name: phantom-ts-replica
@@ -16,6 +21,7 @@ services:
     sysctls:
       - net.ipv4.ip_forward=1
 
+  # PostgreSQL 16 Réplica - Streaming Replication
   postgres-replica:
     image: postgres:16
     container_name: phantom-postgres-replica
@@ -32,7 +38,7 @@ services:
       -c hot_standby=on
       -c hot_standby_feedback=on
       -c max_standby_streaming_delay=30s
-      -c wal_receiver_status_interval=10s
+      - c wal_receiver_status_interval=10s
       -c listen_addresses=*
       -c primary_conninfo=host=oracle-master port=5432 user=replicator password=${REPLICA_PASSWORD} application_name=replica_sslmode=prefer
       -c restore_command=''

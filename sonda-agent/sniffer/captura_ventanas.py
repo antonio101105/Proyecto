@@ -1,7 +1,30 @@
 #!/usr/bin/env python3
 """
 PHANTOM Sniffer - Captura de tráfico en ventanas de 10 segundos
-Envía telemetría agregada a la API central.
+Envía telemetría agregada a la API central PHANTOM.
+
+ARQUITECTURA:
+- Corre en sonda (100.64.0.x) dentro de contenedor con network_mode: host
+- Captura paquetes en interfaz física (eth0 por defecto)
+- Agrega métricas en ventanas de 10 segundos
+- Envía POST /api/v1/telemetria a API central (100.64.0.1:8000)
+
+MÉTRICAS POR VENTANA (por IP origen):
+- paquetes: total de paquetes
+- bytes_totales: total de bytes
+- puertos_distintos: set de puertos destino únicos
+- ttl_promedio: promedio de TTL de paquetes
+
+VARIABLES DE ENTORNO:
+- SONDA_ID: ID de la sonda (ej. sonda-1)
+- API_CENTRAL_URL: URL API central (default: http://100.64.0.1:8000)
+- INTERFACE: Interfaz de red a capturar (default: eth0)
+- WINDOW_SECONDS: Duración de ventana en segundos (default: 10)
+
+REQUISITOS:
+- Capabilities: NET_ADMIN, NET_RAW
+- network_mode: host (para acceso a interfaz física)
+- Librería: scapy (captura paquetes)
 """
 
 import os
@@ -11,79 +34,91 @@ import logging
 import requests
 from datetime import datetime, timezone
 from typing import Dict, List, Tuple
+from collections import defaultdict
 
-# Config
+# Config desde variables de entorno
 SONDA_ID = os.getenv("SONDA_ID", "sonda-1")
 API_URL = os.getenv("API_CENTRAL_URL", "http://100.64.0.1:8000")
 INTERFACE = os.getenv("INTERFACE", "eth0")
 WINDOW_SECONDS = int(os.getenv("WINDOW_SECONDS", "10"))
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger("phantom-sniffer")
 
+
 class WindowTracker:
-    """Tracker de ventanas de 10s para tráfico de red"""
+    """
+    Tracker de ventanas deslizantes de tráfico de red.
+    
+    Mantiene agregados por IP origen durante una ventana de tiempo.
+    Al expirar la ventana, envía los agregados a la API central.
+    """
     
     def __init__(self, window_seconds: int = 10):
         self.window_seconds = window_seconds
-        self.current_window: Dict[str, Dict] = {}
+        # Estructura: {ip_origen: {"paquetes": int, "bytes": int, "puertos": set(), "ttl_sum": int, "ttl_count": int}}
+        self.current_window: Dict[str, Dict] = defaultdict(lambda: {
+            "paquetes": 0,
+            "bytes": 0,
+            "puertos": set(),
+            "ttl_sum": 0,
+            "ttl_count": 0
+        })
         self.window_start: float = time.time()
         self.lock = threading.Lock()
     
-    def record_packet(self, ip_origen: str, ip_destino: str, paquete: int, bytes_: int, puerto: int, ttl: int):
-        """Registrar paquete en la ventana actual"""
+    def record_packet(self, ip_origen: str, paquete: int, bytes_: int, puerto: int, ttl: int):
+        """Registrar un paquete en la ventana actual"""
         with self.lock:
-            # Rotar ventana si pasó el tiempo
+            # Verificar si debemos rotar la ventana
             if time.time() - self.window_start >= self.window_seconds:
                 self._rotate_window()
             
             # Agregar a ventana actual
-            if ip_origen not in self.current_window:
-                self.current_window[ip_origen] = {
-                    "paquetes": 0,
-                    "bytes": 0,
-                    "puertos_distintos": set(),
-                    "ttl_sum": 0,
-                    "ttl_count": 0
-                }
-            
             entry = self.current_window[ip_origen]
-            entry["paquetes"] += paquete
+            entry["paquetes"] += 1
             entry["bytes"] += bytes_
-            entry["puertos_distintos"].add(puerto)
+            entry["puertos"].add(puerto)
             entry["ttl_sum"] += ttl
             entry["ttl_count"] += 1
     
     def _rotate_window(self):
-        """Rotar ventana y enviar agregados"""
+        """Rotar ventana: enviar agregados y resetear"""
+        if not self.current_window:
+            self.window_start = time.time()
+            return
+        
         logger.info("Rotando ventana de %ds - %d IPs únicas", self.window_seconds, len(self.current_window))
         
         telemetria = []
         for ip_origen, data in self.current_window.items():
             ttl_prom = data["ttl_sum"] / max(data["ttl_count"], 1)
             telemetria.append({
-                "sonda_id": SONDA_ID,
+                "sonda_id": os.getenv("SONDA_ID", "sonda-1"),
                 "ip_origen": ip_origen,
                 "paquetes": data["paquetes"],
                 "bytes_totales": data["bytes"],
-                "puertos_distintos": len(data["puertos_distintos"]),
-                "ttl_promedio": round(ttl_prom, 2)
+                "puertos_distintos": len(data["puertos"]),
+                "ttl_promedio": round(data["ttl_sum"] / max(data["ttl_count"], 1), 2)
             })
         
         self._send_telemetria(telemetria)
         
-        # Reset
-        self.current_window = {}
+        # Reset para nueva ventana
+        self.current_window.clear()
         self.window_start = time.time()
     
     def _send_telemetria(self, telemetria: List[Dict]):
-        """Enviar telemetría a API central"""
+        """Enviar telemetría agregada a API central"""
         if not telemetria:
             return
         
         try:
             resp = requests.post(
-                f"{API_URL}/api/v1/telemetria",
+                f"{os.getenv('API_CENTRAL_URL', 'http://100.64.0.1:8000')}/api/v1/telemetria",
                 json={"telemetria": telemetria},
                 timeout=5
             )
@@ -92,30 +127,66 @@ class WindowTracker:
             logger.error("Error enviando telemetría: %s", e)
 
 
-def main():
-    tracker = WindowTracker(window_seconds=WINDOW_SECONDS)
-    logger.info("PHANTOM Sniffer iniciado: sonda=%s ventana=%ds api=%s", SONDA_ID, WINDOW_SECONDS, API_URL)
-    
-    # Loop principal
+def packet_callback(pkt):
+    """Callback de Scapy para cada paquete capturado"""
     try:
-        while True:
-            # Aquí se integraría Scapy o libpcap para capturar paquetes
-            # Por ahora, simulamos con datos de ejemplo para testing
-            time.sleep(1)
+        if pkt.haslayer('IP'):
+            ip_layer = pkt['IP']
+            ip_origen = ip_layer.src
+            ip_destino = ip_layer.dst
+            ttl = ip_layer.ttl
+            bytes_ = len(pkt)
             
-            # Simulación de paquetes (reemplazar con captura real)
-            import random
-            ip_origen = f"192.168.{random.randint(0,254)}.{random.randint(1,254)}"
-            ip_destino = f"192.168.{random.randint(0,254)}.{random.randint(1,254)}"
-            paquete = random.randint(1, 100)
-            bytes_ = random.randint(64, 1500)
-            puerto = random.choice([80, 443, 22, 8080, 53, 123, 3389])
-            ttl = random.randint(32, 128)
+            # Puerto destino si es TCP/UDP
+            puerto = 0
+            if pkt.haslayer('TCP'):
+                puerto = pkt['TCP'].dport
+            elif pkt.haslayer('UDP'):
+                puerto = pkt['UDP'].dport
             
-            tracker.record_packet(ip_origen, ip_destino, paquete, bytes_, puerto, ttl)
-    except KeyboardInterrupt:
-        logger.info("Cerrando...")
-        tracker._rotate_window()
+            tracker.record_packet(
+                ip_origen=ip_layer.src,
+                paquete=1,
+                bytes_=bytes_,
+                puerto=puerto,
+                ttl=ttl
+            )
+    except Exception:
+        pass  # Silenciar errores de parsing
+
+
+def main():
+    global tracker
+    tracker = WindowTracker(window_seconds=WINDOW_SECONDS)
+    logger.info("PHANTOM Sniffer iniciado: sonda=%s ventana=%ds interface=%s api=%s", 
+                os.getenv("SONDA_ID", "sonda-1"), WINDOW_SECONDS, INTERFACE, os.getenv("API_CENTRAL_URL"))
+    
+    # Verificar permisos
+    if os.geteuid() != 0:
+        logger.error("Se requieren privilegios root (NET_RAW/NET_ADMIN). Ejecutar con --cap-add=NET_RAW,NET_ADMIN")
+        return
+    
+    # Importar Scapy aquí para evitar error si no está instalado
+    try:
+        from scapy.all import sniff, IP, TCP, UDP
+    except ImportError:
+        logger.error("Scapy no instalado. Instalar con: pip install scapy")
+        return
+    
+    logger.info("Iniciando captura en interfaz %s...", INTERFACE)
+    
+    try:
+        # Captura continua con callback
+        sniff(
+            iface=INTERFACE,
+            prn=packet_callback,
+            store=False,  # No almacenar paquetes en memoria
+            filter="ip"   # Solo paquetes IP
+        )
+    except PermissionError:
+        logger.error("Permisos insuficientes. Ejecutar con --cap-add=NET_RAW,NET_ADMIN y network_mode: host")
+    except Exception as e:
+        logger.error("Error en captura: %s", e)
 
 
 if __name__ == "__main__":

@@ -29,10 +29,11 @@ docker exec phantom-headscale headscale nodes list --tags
 ## Preauthkeys (Claves de pre-autorización)
 
 ```bash
-# Crear preauthkey reutilizable (expira en 72h)
-docker exec phantom-headscale headscale preauthkeys create --reusable --expiration 72h
+# Crear preauthkey reutilizable para sondas (expira en 24h, tag:sonda, usuario phantom)
+docker exec phantom-headscale headscale preauthkeys create \
+  --user phantom --expiration 24h --tags tag:sonda --reusable
 
-# Crear preauthkey efímera (un solo uso, expira en 1h)
+# Crear preauthkey efímera para admin (un solo uso, expira en 1h)
 docker exec phantom-headscale headscale preauthkeys create --ephemeral --expiration 1h
 
 # Listar preauthkeys
@@ -172,7 +173,8 @@ docker exec phantom-headscale headscale acls get | jq '.acls[] | select(.action=
 
 ```bash
 # Dar de alta nueva sonda completa (preauthkey + verificación)
-docker exec phantom-headscale headscale preauthkeys create --reusable --expiration 72h --tags tag:sonda
+docker exec phantom-headscale headscale preauthkeys create \
+  --user phantom --expiration 24h --tags tag:sonda --reusable
 
 # Ver todos los nodos con sus IPs Tailnet
 docker exec phantom-headscale headscale nodes list | awk '/100\./ {print $2, $3, $4}'

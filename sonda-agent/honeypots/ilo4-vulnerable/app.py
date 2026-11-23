@@ -1,9 +1,20 @@
 #!/usr/bin/env python3
 """
-HPE iLO 4 Honeypot — Réplica literal del iLO HPE real + backend vulnerable + Reporter PHANTOM.
-Sirve los archivos del iLO reales (index.html, login.html, login_box.html, CSS, JS)
-e inyecta vulnerabilidades de propósito: SQLi en el login, XSS reflejado y respuestas falsas ante inyecciones.
-Reporta eventos a la API central PHANTOM.
+HPE iLO 4 Honeypot — Réplica literal del iLO HPE Gen10 + backend vulnerable + Reporter PHANTOM.
+
+CARACTERÍSTICAS:
+- Sirve archivos reales del iLO HPE (HTML/CSS/JS/imágenes extraídos de iLO real)
+- SQLi en login (interpolación cruda en query SQLite)
+- XSS reflejado en nombre de sesión (dashboard)
+- Respuesta falsa 500 (error DB simulado) para payloads SQLi → engaña al atacante
+- Reporter integrado → POST /api/v1/honeypot a API central PHANTOM
+- Logging local en SQLite (attempts, inputs)
+
+ARQUITECTURA:
+- Corre en sonda (100.64.0.x) dentro de contenedor Docker
+- Puerto 443 (HTTPS) expuesto en host
+- Reporter envía a API central: POST http://100.64.0.1:8000/api/v1/honeypot
+- Variables de entorno: SONDA_ID, API_CENTRAL_URL
 """
 
 import os, re, secrets, sqlite3, time, functools
@@ -18,7 +29,7 @@ CERT = os.environ.get("CERT", os.path.join(BASE, "certs/cert.pem"))
 KEY  = os.environ.get("KEY",  os.path.join(BASE, "certs/key.pem"))
 ILO_FILES = os.path.join(BASE, "ilo_files")
 
-# Config Reporter
+# Config Reporter PHANTOM
 SONDA_ID = os.environ.get("SONDA_ID", "sonda-1")
 API_CENTRAL_URL = os.environ.get("API_CENTRAL_URL", "http://100.64.0.1:8000")
 SERVICIO = "hp-ilo4"
@@ -57,7 +68,7 @@ def init_db():
     c.commit()
     c.close()
 
-# ---------- clasificación post-hoc ----------
+# ---------- Clasificación post-hoc (NO valida: la query SIEMPRE se ejecuta) ----------
 SQLI = re.compile(r"('|\"|--|;|\bOR\b\s*\d|\bUNION\b|\bSELECT\b|\bDROP\b|\bSLEEP\s*\(|\bBENCHMARK\s*\(|INFORMATION_SCHEMA)", re.I)
 XSS  = re.compile(r"(<\s*script|onerror\s*=|onload\s*=|javascript:|<\s*img|<\s*svg|document\.cookie)", re.I)
 
@@ -91,7 +102,7 @@ def log_input(field, value):
 
 # ---------- Reporter PHANTOM ----------
 def report_to_central(event_type: str, **kwargs):
-    """Reportar evento a la API central PHANTOM"""
+    """Reportar evento a la API central PHANTOM (fire-and-forget, timeout 3s)"""
     try:
         payload = {
             "sonda_id": os.environ.get("SONDA_ID", "sonda-1"),
@@ -110,7 +121,7 @@ def report_to_central(event_type: str, **kwargs):
             timeout=3
         )
     except Exception:
-        pass  # Silenciar errores de reporte
+        pass  # Silenciar errores de reporte (no bloquear honeypot)
 
 def authed(f):
     @functools.wraps(f)
@@ -120,7 +131,7 @@ def authed(f):
         return f(*a, **k)
     return w
 
-# ---------- servir archivos del iLO reales ----------
+# ---------- Servir archivos del iLO reales ----------
 @app.route("/<path:filename>")
 def ilo_files(filename):
     # login_box.html - inyectar form vulnerable a SQLi
@@ -210,7 +221,7 @@ def login_post():
         outcome = "error"
     log_attempt(user, pwd, raw, outcome, (time.time()-t0)*1000)
     
-    # Reportar intento de login
+    # Reportar intento de login a API central
     report_to_central("login_attempt", username=user, password=pwd, success=(outcome=="authenticated"), 
                       payload_type=classify(user,pwd), raw_query=raw)
 

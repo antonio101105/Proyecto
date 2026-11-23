@@ -1,12 +1,25 @@
+# PHANTOM Headscale Config — Configuración real desplegada en producción
+# Archivo: /etc/headscale/config.yaml (en contenedor phantom-headscale)
+
 server_url: http://82.70.74.120:8085
+# URL pública del servidor Headscale (IP pública Oracle + puerto 8085)
+# Usado por los nodos para conectar y por el panel admin
+
 listen_addr: 0.0.0.0:8080
+# Puerto interno del contenedor Headscale (no exponer directamente)
+# Nginx proxy escucha en 8086 y hace proxy_pass a headscale:8080
+
 metrics_listen_addr: 0.0.0.0:9090
+# Métricas Prometheus (opcional, para monitoring)
 
 db_type: sqlite3
 db_path: /var/lib/headscale/db.sqlite
+# Base de datos SQLite persistida en volume headscale-data
 
 acl_policy_mode: file
 acl_policy_path: /etc/headscale/acl.hujson
+# ACLs cargadas desde archivo (ver acl.hujson)
+# Modo 'file' = recarga automática al cambiar el archivo
 
 derp:
   server_url: https://controlplane.tailscale.com/derpmap/default
@@ -15,10 +28,14 @@ derp:
   auto_update_enabled: true
   paths:
     - /var/lib/headscale/derpmap.json
+# DERP servers para relay cuando no hay conectividad directa
+# Usa servidores Tailscale oficiales + auto-update
 
 tls_letsencrypt: false
 tls_cert_path: ""
 tls_key_path: ""
+# TLS terminado en Nginx proxy (puerto 8086) + Cloudflare Tunnel
+# Headscale interno corre en HTTP (puerto 8080)
 
 log:
   format: text
@@ -29,13 +46,18 @@ policy:
   path: /etc/headscale/acl.hujson
 
 ephemeral_node_inactivity_timeout: 30m
+# Nodos efímeros expiran tras 30 min de inactividad
 
 name:
   allow_rename: true
+# Permite renombrar nodos via API/CLI
 
 namespace:
   allow_create: true
+# Permite crear namespaces (multi-tenancy)
 
 ip_prefixes:
   - 100.64.0.0/10
   - fd7a:115c:a1e0::/48
+# Rangos IP de la Tailnet (IPv4 + IPv6 ULA)
+# 100.64.0.0/10 = rango CGNAT estándar Tailscale

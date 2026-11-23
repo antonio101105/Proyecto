@@ -5,9 +5,10 @@ services:
     image: headscale/headscale:v0.23.0
     container_name: phantom-headscale
     restart: unless-stopped
+    # Puertos: 8080 interno (no expuesto), 8086 via Nginx
     ports:
-      - "8085:8080"      # API Headscale
-      - "8086:8086"      # Panel admin (via Nginx)
+      - "8085:8080"      # API Headscale (público Oracle VCN ingress 8085)
+      # 8086 manejado por nginx-ui contenedor separado
     volumes:
       - ./config/config.yaml:/etc/headscale/config.yaml
       - ./config/acl.hujson:/etc/headscale/acl.hujson
@@ -31,10 +32,11 @@ services:
 
   nginx-ui:
     image: nginx:alpine
-    container_name: phantom-headscale-ui
+    container_name: phantom-headscale-ui-proxy
     restart: unless-stopped
+    # BINDING PRIVADO: Solo en IP Tailscale personal (red admin)
     ports:
-      - "8086:80"
+      - "100.71.200.103:8086:80"
     volumes:
       - ./config/nginx-ui.conf:/etc/nginx/conf.d/default.conf
     depends_on:

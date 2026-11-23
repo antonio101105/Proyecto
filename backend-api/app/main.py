@@ -4,6 +4,12 @@ Endpoints:
 - GET /health
 - POST /api/v1/telemetria (sniffer ventanas 10s)
 - POST /api/v1/honeypot (reporter de honeypots)
+
+Arquitectura:
+- Corre en oracle-master (100.64.0.1) via network_mode: "service:ts-phantom"
+- Base de datos: PostgreSQL 16 Maestro (localhost:5432, mismo network namespace)
+- Modelo ML: modelo_phantom.joblib (scikit-learn RandomForest)
+- Inferencia en tiempo real para alertas con confidence >= 0.80
 """
 
 import os
@@ -22,19 +28,21 @@ from sqlalchemy.exc import SQLAlchemyError
 import joblib
 import numpy as np
 
-# Config
+# Configuración desde variables de entorno
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://phantom:phantom_secret@localhost:5432/phantom")
 MODEL_PATH = os.getenv("MODEL_PATH", "/app/models/modelo_phantom.joblib")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("phantom-api")
 
-# DB Setup
+# ============================================================
+# Base de Datos - SQLAlchemy
+# ============================================================
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=10, max_overflow=20)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Modelos SQLAlchemy
+# Modelos SQLAlchemy (mapeo a tablas creadas en 01-init.sql)
 class TelemetriaRed(Base):
     __tablename__ = "telemetria_red"
     id = Column(BigInteger, primary_key=True, autoincrement=True)
@@ -70,11 +78,11 @@ class HoneypotEvento(Base):
     detalle = Column(JSONB, nullable=False)
     timestamp = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True)
 
-# Crear tablas
+# Crear tablas (idempotente - 01-init.sql ya las crea)
 def init_db():
     Base.metadata.create_all(bind=engine)
 
-# Modelos Pydantic
+# Modelos Pydantic (validación de entrada)
 class TelemetriaIn(BaseModel):
     sonda_id: str = Field(..., min_length=1, max_length=64)
     ip_origen: str
@@ -99,7 +107,7 @@ class HealthResponse(BaseModel):
     database: str
     model_loaded: bool
 
-# Modelo ML global
+# Modelo ML global (cargado en lifespan)
 ml_model = None
 
 @asynccontextmanager
@@ -115,7 +123,6 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Modelo no encontrado en /app/models/modelo_phantom.joblib")
     yield
-    # Cleanup si necesario
 
 app = FastAPI(
     title="PHANTOM Backend API",
@@ -138,9 +145,13 @@ def get_db():
     finally:
         db.close()
 
-# Endpoints
+# ============================================================
+# ENDPOINTS
+# ============================================================
+
 @app.get("/health", response_model=HealthResponse)
 async def health(request: Request, db: Session = Depends(get_db)):
+    """Health check para Docker y monitoreo"""
     try:
         db.execute(text("SELECT 1"))
         db_status = "connected"
@@ -158,7 +169,10 @@ async def recibir_telemetria(
     batch: TelemetriaBatchIn,
     db: Session = Depends(get_db)
 ):
-    """Recibe telemetría de red de sondas (ventanas de 10s)"""
+    """
+    Recibe telemetría de red de sondas (ventanas de 10s)
+    Payload: {"telemetria": [{"sonda_id": "...", "ip_origen": "...", "paquetes": 100, ...}]}
+    """
     try:
         now = datetime.utcnow()
         objects = []
@@ -188,7 +202,10 @@ async def recibir_honeypot(
     event: HoneypotEventIn,
     db: Session = Depends(get_db)
 ):
-    """Recibe eventos de honeypots (reporter.py)"""
+    """
+    Recibe eventos de honeypots (reporter.py de sondas)
+    Payload: {"sonda_id": "...", "servicio": "hp-ilo4", "ip_atacante": "...", "puerto_destino": 443, "detalle": {...}}
+    """
     try:
         # Guardar evento raw
         evento = HoneypotEvento(
@@ -239,6 +256,7 @@ async def recibir_honeypot(
         logger.error("Error guardando honeypot: %s", e)
         raise HTTPException(500, "Database error")
 
+# Endpoints de consulta
 @app.get("/api/v1/telemetria")
 async def listar_telemetria(
     sonda_id: Optional[str] = None,

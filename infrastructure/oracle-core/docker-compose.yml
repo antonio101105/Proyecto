@@ -1,7 +1,17 @@
 version: '3.8'
 
+# PHANTOM Oracle Core - Núcleo Central
+# Despliegue en Oracle Cloud Madrid (82.70.74.120)
+# Red: Tailnet 100.64.0.0/10 (Headscale v0.23.0)
+# IP Central: 100.64.0.1 (tag:oracle)
+
 services:
-  # Cliente Tailscale - comparte red con postgres-master y phantom-api
+  # ============================================================
+  # ts-phantom: Cliente Tailscale - PROVEEDOR DE RED PARA OTROS
+  # ============================================================
+  # Comparte su pila de red (network namespace) con postgres-master y phantom-api
+  # via network_mode: "service:ts-phantom"
+  # IP resultante: 100.64.0.1 (tag:oracle)
   ts-phantom:
     image: tailscale/tailscale:latest
     container_name: phantom-ts
@@ -13,23 +23,26 @@ services:
       - ts-state:/var/lib/tailscale
     environment:
       - TS_AUTHKEY=${HEADSCALE_AUTHKEY}
+      # --advertise-routes=100.64.0.0/10: Anuncia ruta a la subred Tailnet
+      # --accept-routes=false: NO acepta rutas de otros nodos (seguridad)
       - TS_EXTRA_ARGS=--advertise-routes=100.64.0.0/10 --accept-routes=false
       - TS_STATE_DIR=/var/lib/tailscale
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
     sysctls:
       - net.ipv4.ip_forward=1
       - net.ipv6.conf.all.forwarding=1
+    # Nota: Corre con cap NET_ADMIN/SYS_MODULE para gestionar interfaz Tailscale
 
-  # PostgreSQL 16 Maestro - comparte red con ts-phantom
+  # ============================================================
+  # postgres-master: PostgreSQL 16 Maestro
+  # ============================================================
+  # COMPARTE RED con ts-phantom via network_mode: "service:ts-phantom"
+  # IP accesible: 100.64.0.1:5432 (SOLO dentro de Tailnet)
+  # NO expone puertos en host (network_mode comparte red de ts-phantom)
   postgres-master:
     image: postgres:16
     container_name: phantom-postgres-master
     restart: unless-stopped
-    network_mode: "service:ts-phantom"
+    network_mode: "service:ts-phantom"  # ← CLAVE: comparte red con ts-phantom
     environment:
       - POSTGRES_DB=phantom
       - POSTGRES_USER=phantom
@@ -41,12 +54,12 @@ services:
       - ./postgres-init/01-init.sql:/docker-entrypoint-initdb.d/01-init.sql
     command: >
       postgres
-      -c wal_level=replica
+      -c wal_level=replica              # Requisito para streaming replication
       -c max_wal_senders=10
       -c max_replication_slots=10
       -c hot_standby=on
       -c synchronous_commit=local
-      -c listen_addresses=*
+      -c listen_addresses=*             # Escucha en 100.64.0.1 (IP Tailnet)
       -c shared_preload_libraries=pg_stat_statements
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U phantom -d phantom"]
@@ -54,12 +67,16 @@ services:
       timeout: 5s
       retries: 5
 
-  # FastAPI Backend - comparte red con ts-phantom
+  # ============================================================
+  # phantom-api: Backend FastAPI + Modelo ML
+  # ============================================================
+  # COMPARTE RED con ts-phantom via network_mode: "service:ts-phantom"
+  # IP accesible: 100.64.0.1:8000 (SOLO dentro de Tailnet)
   phantom-api:
     build: ../../backend-api
     container_name: phantom-api
     restart: unless-stopped
-    network_mode: "service:ts-phantom"
+    network_mode: "service:ts-phantom"  # ← CLAVE: comparte red con ts-phantom
     environment:
       - DATABASE_URL=postgresql://phantom:${POSTGRES_PASSWORD}@localhost:5432/phantom
       - MODEL_PATH=/app/models/modelo_phantom.joblib

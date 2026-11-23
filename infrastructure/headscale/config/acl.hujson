@@ -1,7 +1,7 @@
 {
   "groups": {
     "group:sondas": ["tag:sonda"],
-    "group:central": ["tag:central"],
+    "group:central": ["tag:oracle"],
     "group:replica": ["tag:replica"]
   },
   "acls": [
@@ -9,27 +9,34 @@
       "action": "accept",
       "src": ["group:sondas"],
       "dst": ["group:central:8000,5432"]
+      // Sondas -> Central: SOLO puertos 8000 (FastAPI) y 5432 (PostgreSQL)
+      // Puerto 22 (SSH) EXPLÍCITAMENTE DENEGADO para sondas
     },
     {
       "action": "accept",
       "src": ["group:central"],
       "dst": ["group:replica:5432"]
+      // Central -> Replica: SOLO puerto 5432 (streaming replication PostgreSQL)
     },
     {
       "action": "deny",
       "src": ["group:sondas"],
       "dst": ["group:sondas"]
+      // BLOQUEO TOTAL MOVIMIENTO LATERAL: Sonda -> Sonda DENEGADO
+      // Incluye ping, SSH, cualquier puerto/protocolo
     },
     {
       "action": "deny",
       "src": ["*"],
       "dst": ["*"]
+      // DEFAULT DENY: todo lo no permitido explícitamente = DENEGADO
     }
   ],
   "tagOwners": {
     "tag:sonda": ["autogroup:member"],
-    "tag:central": ["autogroup:member"],
+    "tag:oracle": ["autogroup:member"],
     "tag:replica": ["autogroup:member"]
+    // Tags asignados automáticamente por Headscale según preauthkey
   },
   "ssh": [],
   "autoApprovers": {

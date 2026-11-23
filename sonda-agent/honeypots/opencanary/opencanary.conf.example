@@ -1,5 +1,6 @@
 # OpenCanary Configuration Example for PHANTOM
 # Copia a /etc/opencanaryd/opencanary.conf y ajusta según necesidades
+# Documentación: https://github.com/thinkst/opencanary
 
 [openCanary]
 version = 0.9.0
@@ -11,7 +12,7 @@ logger_kwargs = {"formatters": {"plain": {"format": "%(message)s"}}, "handlers":
 logfile = /var/log/opencanary.log
 loglevel = INFO
 
-# Puertos habilitados (cambiar enabled = true/false)
+# Puertos habilitados (cambiar enabled = true/false según necesidad)
 [ftp]
 enabled = true
 port = 21
@@ -73,3 +74,7 @@ logfile = /var/log/vnc.log
 # from_addr = 
 # to_addr = 
 # subject = "OpenCanary Alert - {device.node_id}"
+
+# NOTA: Para integrar con PHANTOM, los logs de OpenCanary se pueden enviar
+# a la API central via un sidecar que lea /var/log/opencanary.log y haga POST
+# a /api/v1/honeypot con servicio "opencanary-<servicio>"

@@ -1,151 +1,159 @@
-# Guía de Despliegue de Sondas PHANTOM
+# Guía de Despliegue y Operación de Sondas PHANTOM
 
-## Requisitos previos en el nodo sonda
+## 1. Requisitos Previos en el Nodo Sonda
 
-- Linux (Debian/Ubuntu/CentOS/RHEL)
-- Docker 20.10+ y Docker Compose 2.x
-- Acceso a internet (para descargar imágenes)
-- Clave de pre-autorización (preauthkey) de Headscale con tag `tag:sonda`
+- **SO**: Linux (Debian 11+/Ubuntu 22.04+/CentOS 8+/RHEL 8+)
+- **Docker**: 20.10+ y Docker Compose 2.x (`docker compose` plugin)
+- **Acceso a Internet**: Para descargar imágenes Docker
+- **Clave de pre-autorización**: PreAuth Key de Headscale **con tag `tag:sonda`**
 
-## 1. Preparar el entorno
+---
+
+## 2. Diferencia Crítica: PreAuth Keys vs API Keys
+
+> **⚠️ REGLA CRÍTICA ENCONTRADA EN PRODUCCIÓN**
+
+| Tipo | Formato | Uso | Ejemplo |
+|------|---------|-----|---------|
+| **PreAuth Key** | Cadena hexadecimal continua (sin puntos) | `tailscale up --authkey=...` | `abcd1234ef567890...` |
+| **API Key** | Con punto en medio | Panel `headscale-admin` | `tskey-abc123.def456ghi789` |
+
+> **❌ ERROR COMÚN:** Usar API Key en `tailscale up --authkey` → **FALLA** con error de autenticación.
+> **✅ CORRECTO:** Generar PreAuth Key con `--tags tag:sonda` (para el tag) y `--user phantom` (para el usuario) y usarla en `tailscale up`.
 
 ```bash
-# Actualizar sistema
-sudo apt update && sudo apt upgrade -y
-
-# Instalar Docker
-curl -fsSL https://get.docker.com | sudo bash
-sudo usermod -aG docker $USER
-newgrp docker
-
-# Verificar
-docker --version
-docker compose version
+# Generar PreAuth Key correcta para sondas
+docker exec phantom-headscale headscale preauthkeys create \
+  --user phantom --expiration 24h --tags tag:sonda
 ```
 
-## 2. Instalación automatizada con install_sonda.sh
+---
+
+## 2. Nomenclatura de Host
+
+| Regla | Ejemplo Correcto | Incorrecto |
+|--------|------------------|------------|
+| Sin puntos | `sonda-1`, `sonda-edge-01` | `sonda.1`, `sonda.prod` |
+| Minúsculas y guiones | `sonda-edge-01` | `SONDA-1`, `Sonda_1` |
+| Único en la red | `sonda-1`, `sonda-2` | Duplicados |
+
+> **Razón:** MagicDNS de Tailscale usa el hostname para DNS. Puntos causan problemas de resolución.
+
+---
+
+## 3. Instalación Automatizada con `install_sonda.sh`
 
 ```bash
 cd sonda-agent/scripts
 chmod +x install_sonda.sh
 
-# Instalación completa
 sudo ./install_sonda.sh \
   --authkey <PREAUTHKEY_DE_HEADSCALE> \
   --hostname sonda-1 \
   --api-url http://100.64.0.1:8000
 ```
 
-### Opciones del script
+### Opciones del Script
 
 | Parámetro | Descripción | Requerido |
 |-----------|-------------|-----------|
-| `--authkey` | Preauthkey de Headscale con `tag:sonda` | Sí |
-| `--hostname` | Nombre del nodo (ej. sonda-1) | Sí |
-| `--api-url` | URL de la API central (default: http://100.64.0.1:8000) | No |
-| `--skip-tailscale` | Saltar instalación de Tailscale (si ya está) | No |
-| `--skip-docker` | Saltar instalación de Docker | No |
+| `--authkey` | Preauthkey de Headscale con `tag:sonda` | **Sí** |
+| `--hostname` | Nombre del nodo (ej. `sonda-1`) | **Sí** |
+| `--api-url` | URL API central (default: `http://100.64.0.1:8000`) | No |
+| `--skip-tailscale` | Saltar instalación/config Tailscale | No |
+| `--skip-docker` | Saltar instalación Docker | No |
 
-## 3. Verificar conexión a Headscale
+### Qué hace el script internamente
+
+1. **Instala Docker** (si no existe) via `get.docker.com`
+2. **Instala Docker Compose plugin** (`docker-compose-plugin`)
+3. **Instala Tailscale** (script oficial)
+4. **Conecta a Headscale**: `tailscale up --authkey=... --hostname=... --accept-routes=false --accept-dns=false`
+5. **Verifica tag `tag:sonda`** en `tailscale status --json`
+6. **Clona repo PHANTOM** en `/opt/phantom`
+7. **Crea `.env`** con `SONDA_ID` y `API_CENTRAL_URL`
+7. **Levanta servicios**: `docker compose up -d --build` en `sonda-agent/`
+
+---
+
+## 4. Verificación de Conexión a Headscale
 
 ```bash
-# Ver IP Tailnet asignada
+# 1. Ver IP Tailnet asignada
 tailscale ip -4
-# Debe mostrar 100.64.0.x
+# Debe mostrar: 100.64.0.x
 
-# Ver estado
+# 2. Ver estado completo
 tailscale status
-# Debe mostrar conectado a "phantom-headscale"
+# Debe mostrar: "Connected to phantom-headscale"
 
-# Verificar tags
-tailscale status --json | jq '.Self.Tags'
-# Debe incluir "tag:sonda"
+# 3. Verificar tag:sonda (CRÍTICO)
+tailscale status --json | jq '.Self.Tags[]'
+# Debe incluir: "tag:sonda"
+
+# 3b. Verificar rutas
+tailscale status --json | jq '.Self.AllowedIPs'
+# Debe incluir: "100.64.0.0/10"
 ```
 
-## 4. Auditar aislamiento (CRÍTICO)
+---
+
+## 5. Auditoría de Aislamiento (OBLIGATORIO POST-DESPLIEGUE)
+
+> **REGLA DE ORO:** Si la auditoría falla, **NO pongas la sonda en producción**.
+
+### 5.1 Test de Movimiento Lateral (DEBE FALLAR)
 
 ```bash
-# 1. No debe poder hacer ping a otras sondas
-ping -c 1 100.64.0.2
-# → Debe fallar (Destination Host Unreachable / timeout)
+# 1. Ping a otra sonda (DEBE FALLAR)
+ping -c 3 -W 2 100.64.0.4
+# → DEBE DEVOLVER: 100% packet loss
 
-# 2. No debe poder conectar a puertos de otras sondas
-nc -vz 100.64.0.2 8000
-# → Connection refused / timeout
+# 2. TCP a otra sonda (DEBE FALLAR)
+nc -zv -w 3 100.64.0.4 22
+# → DEBE DEVOLVER: Connection timed out
 
-# 3. DEBE poder conectar a oracle-master
-nc -vz 100.64.0.1 8000
-# → Connection to 100.64.0.1 8000 port [tcp/*] succeeded!
-
-nc -vz 100.64.0.1 5432
-# → Connection to 100.64.0.1 5432 port [tcp/*] succeeded!
+nc -zv -w 3 100.64.0.4 8000
+# → DEBE DEVOLVER: Connection timed out
 ```
 
-## 5. Levantar servicios de la sonda
+### 5.2 Test de Acceso Norte-Sur (DEBE FUNCIONAR)
 
 ```bash
-cd /opt/phantom/sonda-agent  # o donde hayas clonado el repo
-docker compose up -d
+# 1. FastAPI (puerto 8000)
+nc -zv 100.64.0.1 8000
+# → DEBE DEVOLVER: Connection to 100.64.0.1 8000 port [tcp/*] succeeded!
 
-# Verificar estado
-docker compose ps
-# Debería mostrar: ilo4-vulnerable, opencanary, sniffer → Up
+# 2. PostgreSQL (puerto 5432)
+nc -zv 100.64.0.1 5432
+# → DEBE DEVOLVER: Connection to 100.64.0.1 5432 port [tcp/*] succeeded!
 ```
 
-### Verificar servicios
+### 5.3 Verificar SSH a Central BLOQUEADO
 
 ```bash
-# iLO4 honeypot (puerto 443 HTTPS)
-curl -sk https://localhost:443/login | grep -q "iLO" && echo "OK"
-
-# OpenCanary (puertos 22, 21, 445, etc.)
-docker compose logs opencanary
-
-# Sniffer
-docker compose logs sniffer
-# Debe mostrar: "Enviando telemetría a http://100.64.0.1:8000/api/v1/telemetria"
+nc -zv -w 3 100.64.0.1 22
+# → DEBE DEVOLVER: Connection timed out
 ```
 
-## 6. Verificar reporte a API central
+### 5.4 Script de Auditoría Automatizada
 
 ```bash
-# Ver logs del reporter en honeypot
-docker compose logs -f ilo4-vulnerable
-# Debe mostrar: "POST /api/v1/honeypot → 200"
-
-# Ver en base de datos central
-curl http://100.64.0.1:8000/api/v1/honeypot | jq .
-```
-
-## 7. Verificar aislamiento periódico (cron)
-
-```bash
-# Añadir a crontab (cada hora)
-crontab -e
-# Añadir:
-0 * * * * /opt/phantom/sonda-agent/scripts/audit_aislamiento.sh >> /var/log/phantom-aislamiento.log 2>&1
-```
-
-### Contenido de audit_aislamiento.sh
-
-```bash
+# Guardar como /opt/phantom/sonda-agent/scripts/audit_aislamiento.sh
 #!/bin/bash
-# /opt/phantom/sonda-agent/scripts/audit_aislamiento.sh
-
 LOG="/var/log/phantom-aislamiento.log"
-SondaIP=$(tailscale ip -4 | head -1)
 CENTRAL="100.64.0.1"
 
-echo "$(date) - Auditoría aislamiento desde $SondaIP" >> $LOG
+echo "$(date) - Auditoría desde $(tailscale ip -4)" >> $LOG
 
-# Test 1: No ping a otras sondas (100.64.0.2-10)
+# Test lateral (debe fallar)
 for i in {2..10}; do
   if ping -c 1 -W 1 "100.64.0.$i" >/dev/null 2>&1; then
     echo "ALERTA: Ping a 100.64.0.$i EXITOSO (debería fallar)" >> $LOG
   fi
 done
 
-# Test 2: Conectividad a central
+# Test central (debe funcionar)
 for port in 8000 5432; do
   if nc -z -w 2 $CENTRAL $port; then
     echo "OK: Puerto $port en $CENTRAL accesible" >> $LOG
@@ -155,25 +163,168 @@ for port in 8000 5432; do
 done
 ```
 
-## 8. Solución de problemas
+**Configurar en crontab (cada hora):**
+```bash
+crontab -e
+# 0 * * * * /opt/phantom/sonda-agent/scripts/audit_aislamiento.sh >> /var/log/phantom-aislamiento.log 2>&1
+```
+
+---
+
+## 5. Levantar Servicios de la Sonda
+
+```bash
+cd /opt/phantom/sonda-agent
+docker compose up -d --build
+
+# Verificar estado
+docker compose ps
+# Debería mostrar: ilo4-vulnerable, opencanary, sniffer, firewall-redirect → Up
+```
+
+### Verificar Servicios Individuales
+
+```bash
+# iLO4 Honeypot (puerto 443 HTTPS)
+curl -sk https://localhost:443/login | grep -q "iLO" && echo "OK: iLO4 UP"
+
+# OpenCanary (puertos 22, 21, 445, etc.)
+docker compose logs opencanary
+
+# Sniffer (ventanas 10s)
+docker compose logs sniffer
+# Debe mostrar: "Enviando telemetría a http://100.64.0.1:8000/api/v1/telemetria"
+
+# Firewall Redirect
+docker compose logs firewall-redirect
+# Debe mostrar: "Verificando alertas cada 30s"
+```
+
+---
+
+## 6. Verificar Reporte a API Central
+
+```bash
+# Ver logs del reporter en honeypot iLO4
+docker compose logs -f ilo4-vulnerable
+# Debe mostrar: "Evento reportado: hp-ilo4 -> {'status': 'accepted'...}"
+
+# Ver en base de datos central
+curl http://100.64.0.1:8000/api/v1/honeypot | jq .
+
+# Ver alertas generadas (confianza >= 0.80)
+curl "http://100.64.0.1:8000/api/v1/alertas?min_confidence=0.80" | jq .
+```
+
+---
+
+## 6. Limpieza de Estado al Re-registrar/Reemplazar Sonda
+
+> **REGLA:** Si una máquina ya tuvo Tailscale configurado o su nodo fue borrado en Headscale, **limpiar estado completamente** antes de re-registrar.
+
+```bash
+# 1. Detener demonio Tailscale
+sudo systemctl stop tailscaled
+
+# 2. Borrar estado persistente
+sudo rm -f /var/lib/tailscale/tailscaled.state
+
+# 3. Reiniciar demonio
+sudo systemctl start tailscaled
+
+# 4. Re-registrar CON FORCE REAUTH
+sudo tailscale up \
+  --force-reauth \
+  --login-server=http://82.70.74.120:8085 \
+  --authkey=<NUEVA_PREAUTH_KEY> \
+  --hostname=<NOMBRE> \
+  --accept-routes=false
+
+# 5. Verificar
+tailscale ip -4
+tailscale status --json | jq '.Self.Tags[]'
+```
+
+---
+
+## 7. Verificación de Servicios Sonda
+
+### Honeypot iLO4 (puerto 443)
+
+```bash
+# Test rápido
+curl -sk https://localhost:443/login | grep -q "iLO" && echo "OK"
+
+# Test SQLi → 500 falso
+curl -sk -X POST https://localhost/login -d "username=admin' OR 1=1--&password=x" -o /dev/null -w "%{http_code}\n"
+# → 500 (respuesta falsa)
+
+# Test limpio → 401
+curl -sk -X POST https://localhost/login -d "username=bob&password=nope" -o /dev/null -w "%{http_code}\n"
+# → 401
+```
+
+### OpenCanary
+
+```bash
+# Ver logs
+docker compose logs opencanary
+
+# Test puertos
+nc -zv localhost 22   # SSH
+nc -zv localhost 21   # FTP
+nc -zv localhost 445  # SMB
+```
+
+### Sniffer (ventanas 10s)
+
+```bash
+docker compose logs sniffer
+# Debe mostrar cada 10s: "Enviando telemetría a http://100.64.0.1:8000/api/v1/telemetria"
+```
+
+### Firewall Redirect
+
+```bash
+docker compose logs firewall-redirect
+# Debe mostrar: "Verificando alertas cada 30s"
+```
+
+---
+
+## 7. Checklist de Validación Post-Despliegue
+
+| ✅ Ítem | Verificación |
+|--------|--------------|
+| 1 | `tailscale ip` muestra `100.64.0.x` |
+| 2 | `tailscale status` muestra conectado |
+| 3 | Tag `tag:sonda` visible en JSON |
+| 4 | Ping a otra sonda **falla** (100% loss) |
+| 5 | `nc -vz 100.64.0.1 8000` **funciona** |
+| 6 | `nc -vz 100.64.0.1 5432` **funciona** |
+| 7 | `nc -vz 100.64.0.1 22` **falla** (timeout) |
+| 8 | `docker compose ps` → 4 servicios Up |
+| 9 | Honeypot iLO4 responde en 443 |
+| 10 | Logs muestran envío a `/api/v1/telemetria` y `/api/v1/honeypot` |
+| 11 | Auditoría cron configurada |
+
+---
+
+## 8. Solución de Problemas Comunes
 
 | Problema | Diagnóstico | Solución |
 |----------|-------------|----------|
 | `tailscale ip` no muestra 100.64.x.x | No conectado a Headscale | `sudo tailscale up --authkey=<key>` |
-| `tag:sonda` no aparece | Preauthkey sin tag | Regenerar preauthkey con `--tags tag:sonda` |
-| Ping a otra sonda funciona | ACLs no aplicadas | Verificar `headscale acls get` en controlador |
-| Puerto 8000 no accesible | Firewall / contenedor caído | `docker compose ps` + `docker compose logs` |
-| Honeypot no reporta | Variable `API_CENTRAL_URL` mal | Verificar `docker compose exec ilo4-vulnerable env` |
+| `tag:sonda` no aparece | Preauthkey sin tag | Regenerar: `--tags tag:sonda` |
+| Ping a otra sonda funciona | ACLs no aplicadas | `docker exec phantom-headscale headscale acls get` |
+| Puerto 8000 no accesible | Firewall / contenedor caído | `docker compose ps` + `logs` |
+| Honeypot no reporta | Variable `API_CENTRAL_URL` mal | `docker compose exec ilo4-vulnerable env` |
+| Sniffer no envía | Interfaz incorrecta | Verificar `INTERFACE=eth0` en `.env` |
 
-## Checklist de validación post-despliegue
+---
 
-- [ ] `tailscale ip` muestra 100.64.0.x
-- [ ] `tailscale status` muestra conectado
-- [ ] Tag `tag:sonda` visible en `tailscale status --json`
-- [ ] Ping a otra sonda **falla**
-- [ ] `nc -vz 100.64.0.1 8000` **funciona**
-- [ ] `nc -vz 100.64.0.1 5432` **funciona**
-- [ ] `docker compose ps` muestra 3 servicios Up
-- [ ] Honeypot iLO4 responde en 443
-- [ ] Logs muestran envío a `/api/v1/honeypot` y `/api/v1/telemetria`
-- [ ] Auditoría cron configurada
+## 9. Referencias
+
+- [Arquitectura de Red Completa](arquitectura-red.md)
+- [Comandos Headscale](comandos-headscale.md)
+- [README Principal](../README.md)

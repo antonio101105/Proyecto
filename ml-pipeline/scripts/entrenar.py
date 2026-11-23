@@ -1,9 +1,26 @@
 #!/usr/bin/env python3
 """
-Entrenamiento del modelo PHANTOM — Clasificación de tráfico malicioso
+PHANTOM ML Pipeline — Entrenamiento del modelo de detección de anomalías
 
-Entrena un modelo scikit-learn (RandomForest) para detectar tráfico anómalo/malicioso
-basado en telemetría de red y eventos de honeypot.
+Entrena un modelo scikit-learn (RandomForest) para clasificar tráfico de red como:
+- Benigno (0): tráfico normal (HTTP/HTTPS, DNS, NTP, puertos altos)
+- Malicioso (1): tráfico anómalo (puertos sensibles, bytes/pkt anómalos, muchos puertos)
+
+ARQUITECTURA:
+- Features: paquetes, bytes_totales, puertos_distintos, ttl_promedio, puerto_destino, bytes_por_paquete
+- Target: es_malicioso (0/1)
+- Modelo: RandomForestClassifier (200 árboles, max_depth=15, class_weight='balanced')
+- Pipeline: StandardScaler + RandomForest
+- Exportación: joblib.dump(pipeline, "modelo_phantom.joblib")
+
+DATASETS:
+- Entrada: datasets/telemetria_limpia.csv (generado por limpiar_csv.py)
+- Salida: models/modelo_phantom.joblib + models/metricas.json + models/roc_curve.png
+
+USO EN PRODUCCIÓN:
+1. Copiar modelo_phantom.joblib a backend-api/models/
+4. Reiniciar phantom-api para cargar modelo
+5. API ejecuta inferencia en /api/v1/honeypot → confidence >= 0.80 genera alerta
 """
 
 import pandas as pd
@@ -13,7 +30,7 @@ import json
 from pathlib import Path
 from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, roc_curve
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, roc_curve, precision_recall_fscore_support
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 import matplotlib.pyplot as plt
@@ -26,8 +43,7 @@ MODEL_OUTPUT = Path("../models/modelo_phantom.joblib")
 METRICS_OUTPUT = Path("../models/metricas.json")
 
 def cargar_datos():
-    """Cargar y preparar datos"""
-    # Si no existe dataset, generar sintético para demo
+    """Cargar y preparar datos. Si no existe dataset, genera sintético para demo."""
     if not Path("../../datasets/telemetria_limpia.csv").exists():
         print("Generando dataset sintético para demo...")
         return generar_datos_sinteticos()
@@ -46,14 +62,14 @@ def cargar_datos():
     return df
 
 def generar_datos_sinteticos(n=10000):
-    """Genera datos sintéticos para demo"""
+    """Genera datos sintéticos balanceados para demo"""
     np.random.seed(42)
     
     # Tráfico benigno (80%)
     n_benigno = int(n * 0.8)
     n_malicioso = n - n_benigno
     
-    # Benigno: puertos altos, bytes normales, pocos puertos
+    # Benigno: puertos altos (HTTP/HTTPS/DNS), bytes normales, pocos puertos
     benigno = pd.DataFrame({
         'paquetes': np.random.poisson(50, n_benigno),
         'bytes_totales': np.random.normal(50000, 10000, n_benigno).clip(1000),
@@ -88,7 +104,7 @@ def generar_datos_sinteticos(n=10000):
     return df
 
 def entrenar(df):
-    """Entrenar modelo RandomForest"""
+    """Entrenar modelo RandomForest con pipeline StandardScaler + RandomForest"""
     
     # Preparar features y target
     feature_cols = [c for c in df.columns if c not in ['es_malicioso', 'sonda_id', 'timestamp', 'ip_origen', 'ip_atacante']]
@@ -98,12 +114,12 @@ def entrenar(df):
     print(f"Features: {len(feature_cols)} - {feature_cols}")
     print(f"Distribución target: {y.value_counts().to_dict()}")
     
-    # Split
+    # Split estratificado
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
     
-    # Pipeline con StandardScaler + RandomForest
+    # Pipeline: StandardScaler + RandomForest
     pipeline = Pipeline([
         ('scaler', StandardScaler()),
         ('rf', RandomForestClassifier(
@@ -151,7 +167,6 @@ def entrenar(df):
     print(f"\nModelo guardado en: {MODEL_OUTPUT}")
     
     # Guardar métricas
-    from sklearn.metrics import precision_recall_fscore_support
     precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='binary')
     
     metricas = {
