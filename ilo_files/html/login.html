@@ -1,0 +1,118 @@
+<!-- RpPageHeader RpUrl=/html/login.html RpAccess=Realm2 RpAccess=Realm3 RpObjectType=Static --><!DOCTYPE HTML id="login_html"> <head>
+<meta http-equiv=X-UA-Compatible content="IE=edge"/>
+<meta http-equiv=Content-Type content="text/html; charset=utf-8"/>
+<meta name=copyright content="© Copyright 2002-2022 Hewlett Packard Enterprise Development LP"/>
+<title>Login</title>
+<link href=../css/jquery-ui.css rel=stylesheet type=text/css media="all"/>
+<link href=../css/eov.css rel=stylesheet type=text/css media="all"/>
+<!--[if lte IE 9]><link href="../css/eov_lteIE9.css" rel="stylesheet" type="text/css" media="all" /><![endif]-->
+<link href=../alt/css/style.css rel=stylesheet type=text/css media="all"/>
+<script type=text/javascript src=../js/json2.js></script><script type=text/javascript src=../js/jquery.js></script><script type=text/javascript src=../js/jquery-ui.js></script><script type=text/javascript src=../js/iLO.js></script><script type=text/javascript>function unloadfunc() {
+  $.unsubscribe(eventhandle);
+}
+
+var me = this, isConnected = iLO.init({
+  helpUrl: "scr-webui.html"
+}), eventhandle;
+
+$(document).on('click', "#help_button", function() {
+  return iLO.openContextHelp("scr-webui.html"), $(this).trigger("blur"), !1;
+}), $(document).ready(function() {
+  $('#login_box_top3').on('click', function() {
+    return iLO.openContextHelp("scr-webui.html"), $(this).trigger("blur"), !1;
+  });
+}), $(document).on('click', ".login-link", function() {
+  var elem = $(this).attr("toggle");
+  return $("#" + elem).toggle("slow"), !1;
+}), me.supportedBrowser = function() {
+  var version = iLOGlobal.ie, compatibilityViewBrowser = parseFloat(document.documentMode), isValid = !0;
+  return version && (isValid = isNaN(compatibilityViewBrowser) === !1 && compatibilityViewBrowser >= 9 ? !0 : !1), 
+  isValid;
+}, eventhandle = $.subscribe("login_session", function() {
+  $(document).ready(function() {
+    iLO.translatePage(), $("#login-banner-title").show();
+  });
+}), window.onbeforeunload = function() {
+  return me.unloadfunc();
+}, $(document).on("unload", function() {
+  me.unloadfunc(), $(document).off('unload');
+}), $(document).ready(function() {
+  me.supportedBrowser() ? $("#login_box").load("login_box.html") : $('#hp-unsupported-browser').show(), 
+  $("#effect").hide(), $("#loginSecurityBanner").hide();
+});</script></head><body class="bodyContent login-body">
+<table class=login-banner-table border=0 cellspacing=0>
+<tr>
+<td class="login-banner-left background-color-index-neutral-1 background-color-index-neutral-4">
+<div class=login-logo id=login-logo><img src=../images/hpe_pri_grn_rev_rgb.svg title="Hewlett Packard Enterprise logo"></div>
+<div id=login-banner-title class=login-banner-title style=display:none>
+<h1 rel=localize[appName.titleHeading] id=titleHeading></h1>
+<h2 id=hpBrand class=alt-off></h2>
+<br/><br/>
+<span id=iLOStatus style=vertical-align:middle;margin-left:-21px><img src=../images/x.gif alt="" height=21 width=17 border="0"/></span> <span id=fwver_span><span rel=localize[login.fwver] id=titleFwver>Firmware Version</span>&nbsp;<span id=fwver></span></span><br/>
+<span id=cnStatus style=vertical-align:middle;margin-left:-21px><img src=../images/x.gif alt="" height=21 width=17 border="0"/></span> <span id=cn></span>
+<br/><br/><br/>
+</div>
+</td>
+<td class=login-banner-right>
+<div id=login-banner-right-div></div>
+</td>
+</tr>
+</table>
+<div class=login-middle>
+<table id=login-middle-table cellspacing=0>
+<tr id=tr1-login-middle-table>
+<td></td>
+<td id=login_box_top>
+<div id=login_box_top_div>
+<div id=login_box_top1></div>
+<div id=login_box_top2></div>
+<div id=login_box_top3></div>
+</div>
+</td>
+<td></td>
+</tr>
+<tr id=tr2-login-middle-table>
+<td id=td-loginSecurityBanner>
+<div id=loginSecurityBanner>
+<h5 id=loginSecurityBannerHeader rel=localize[login.secNotice]>Security Notice</h5>
+<p id=securityMessage></p>
+</div>
+</td>
+<td id=login_box>
+<div id=hp-unsupported-browser class="hp-notify hp-notify-info" style=display:none>
+<p rel=localize[unsupportedBrowser]>Your browser or browser mode is not supported. Try a recent version of Firefox, Chrome or Edge, and ensure that the Internet Explorer Enterprise Mode is disabled for this website.</p>
+</div>
+</td>
+<td id=login_help_div>
+<svg id=help_button class="control-icon control-icon-help" viewBox="0 0 48 48" version=1.1 data-reactid=".0.$=11:0.1.0.1.0.0.2.5.$Help.0" title=help langKey=help langAttr=title border=0 style=cursor:pointer>
+<g fill=none data-reactid=".0.$=11:0.1.0.1.0.0.2.5.$Help.0.0">
+<path stroke-width=2 d=M17,18c0-4,3.4-7,7-7c3.5,0,7,2.7,7,7s-3.6,7-7,7v6 data-reactid=".0.$=11:0.1.0.1.0.0.2.5.$Help.0.0.0"></path>
+<line stroke-width=2 x1=24 y1=37 x2=24 y2=35 data-reactid=".0.$=11:0.1.0.1.0.0.2.5.$Help.0.0.1">
+</line>
+</g>
+</svg>
+</td>
+</tr>
+<tr id=tr-login-copyright>
+<td>&nbsp;</td>
+<td colspan=2 id=td-login-copyright class=alt-off>
+<div id=login-copyright>
+<div>© 2002-2023 Hewlett Packard Enterprise Development LP</div>
+<div id=osl style=text-align:right><a target=_blank data-localize=login.osl onclick="
+  iLO.openContextHelp('info_open_source.html');
+">Open source licenses</a></div>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div id=login-footer>
+<div id=footerLoginSecurityBanner>
+<h5 id=footerLoginSecurityBannerHeader rel=localize[login.secNotice] style=display:none>Security Notice
+</h5>
+<p id=footerSecurityMessage></p>
+<br/>
+</div>
+<div id=login_rec_browsers rel=localize[login.rec_browsers]>Recommended browsers include the latest versions of Firefox, Chrome and Edge</div>
+</div>
+</body>
