@@ -1,4 +1,4 @@
-# PHANTOM — Sistema Distribuido de Decepción y Prevención de Intrusiones Asistido por IA
+# PHANTOM <—> Sistema Distribuido de Decepción y Prevención de Intrusiones Asistido por IA
 
 ## Arquitectura
 
