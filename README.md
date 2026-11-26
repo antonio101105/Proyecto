@@ -1,6 +1,6 @@
 # PHANTOM - Sistema Distribuido de Decepción y Prevención de Intrusiones Asistido por IA
-#tag 
-# h1
+
+
 ## Arquitectura
 
 PHANTOM es un **honeypot distribuido hub-and-spoke** sobre **Headscale v0.23.0** (Tailnet aislada).
